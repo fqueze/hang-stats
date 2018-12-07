@@ -46,7 +46,7 @@ function updateTitle() {
 function getStackForHang(hang) {
   let stack = [];//39662 38366
 //  let shouldRemovePrefix = true;
-  for (let {funcName, libName} of hang.frames) {
+  for (let {funcName, libName, hidden} of hang.frames) {
 /*    if (shouldRemovePrefix &&
         ["xul", "XUL", "libxul.so",
          "mozglue", "libmozglue.so"].includes(libName)) {
@@ -56,6 +56,8 @@ function getStackForHang(hang) {
     }*/
     if (funcName.startsWith("NS_ProcessNextEvent(nsIThread"))
       break;
+    if (hidden)
+      continue;
     stack.push(funcName + " " + libName);
   }
   return stack.join("\n");
@@ -97,12 +99,13 @@ async function fetchHangs(size) {
 
       // Leave only one non-Mozilla frame at the top of the stack.
       if (shouldRemovePrefix &&
-          ["xul", "XUL", "libxul.so", "nss3", "libnss3.dylib",
+          ["xul", "XUL", "libxul.so", //"nss3", "libnss3.dylib",
            "mozglue", "libmozglue.so"].includes(libName) &&
           !funcName.includes("::InterposedNt")) {
         shouldRemovePrefix = false;
         if (frames.length > 1)
-          frames.splice(0, frames.length - 1);
+          for (let i = 0; i < frames.length - 1; ++i)
+            frames[i].hidden = "Foreign code";
       }
 
       function isJSFuncName(n) {
@@ -127,17 +130,19 @@ async function fetchHangs(size) {
           let f = frames[i];
           if ((!f.libName && isJSFuncName(f.funcName)) ||
               f.funcName.startsWith("static bool XPC_WN_"))
-            frames.splice(i + 1);
+            for (let ii = i + 1; ii < frames.length; ++ii)
+              frames[ii].hidden = "JS Engine Internal";
         }
 
         if (frames.length > 3 &&
             ["XPTC__InvokebyIndex", "NS_InvokeByIndex"].includes(frames[frames.length - 3].funcName) &&
             frames[frames.length - 2].funcName.startsWith("XPCWrappedNative::CallMethod(") &&
             frames[frames.length - 1].funcName.startsWith("static bool XPC_WN_"))
-          frames.splice(frames.length - 3);
+          for (let ii = frames.length - 3; ii < frames.length; ++ii)
+            frames[ii].hidden = "JS Engine Internal";
       }
       
-      frames.push({funcName, libName});
+      frames.push({funcName, libName, hidden: ""});
       stack = thread.stackTable.prefix[stack];
     }
     hangs.push({duration: Math.round(day.sampleHangMs[id] * usageHours),
@@ -157,8 +162,13 @@ function formatTime(time) {
 
 function displayHangs(hangs, filterString) {
   if (filterString) {
-    hangs = hangs.filter(h => h.frames.some(f => f.funcName.includes(filterString) ||
-                                                 f.libName.includes(filterString)));
+    let filterFun = (value, filter) => value.includes(filter);
+    // Make the filter case insensitive if the filter string is all lower case.
+    if (filterString.toLowerCase() == filterString) {
+      filterFun = (value, filter) => value.toLowerCase().includes(filter);
+    }
+    hangs = hangs.filter(h => h.frames.some(f => filterFun(f.funcName, filterString) ||
+                                                 filterFun(f.libName, filterString)));
   }
   let tbody = document.getElementById("tbody");
   while (tbody.firstChild)
@@ -186,8 +196,12 @@ function displayHangs(hangs, filterString) {
     totalCount += hang.count;
 
     td = document.createElement("td");
-    td.textContent = `${hang.frames[0].funcName} ${hang.frames[0].libName}`;
-    td.title = getStackForHang(hang);
+    let frameId = 0;
+    while (hang.frames[frameId].hidden)
+      ++frameId;
+    let {funcName, libName} = hang.frames[frameId];
+    td.textContent = `${funcName} ${libName}`;
+    tr.hang = hang;
     tr.appendChild(td);
 
     tbody.appendChild(tr);
@@ -233,6 +247,33 @@ function displayHangs(hangs, filterString) {
     tr.appendChild(td);
     tbody.appendChild(tr);
   }
+  setSelectedRow(null);
+}
+
+let gSelectedRow;
+function setSelectedRow(row) {
+  if (gSelectedRow) {
+    gSelectedRow.removeAttribute("selected");
+  }
+  let div = document.getElementById("stack");
+  if (row && row.hang) {
+    row.setAttribute("selected", "true");
+    gSelectedRow = row;
+    //    let stack = getStackForHang(row.hang);
+    let escape = s => s.replace(/&/g, "&amp;")
+                       .replace(/</g, "&lt;")
+                       .replace(/>/g, "&gt;");
+    div.innerHTML = `<ul>${
+      row.hang.frames.map(f =>
+        (f.hidden ? `<li class="hidden-frame" title="${f.hidden}">`
+                  : "<li>") +
+        `${escape(f.funcName)} ${escape(f.libName)}</li>`)
+         .join('')
+    }</ul>`;
+  } else if (gSelectedRow) {
+    gSelectedRow = null;
+    div.innerHTML = "";
+  }
 }
 
 window.onload = async function() {
@@ -275,5 +316,22 @@ window.onload = async function() {
     document.location.hash = urlHash.toString();
     displayHangs(ghangs, filterString);
     updateTitle();
+  });
+
+  let tbody = document.getElementById("tbody");
+  tbody.addEventListener("click", event => {
+    // Handle selection changes
+    let row = event.target.parentNode;
+    setSelectedRow(row);
+  });
+
+  tbody.addEventListener("keydown", event => {
+    // Handle selection changes
+    console.log(event);
+    let row = event.target.parentNode;
+    if (this.selectedRow && this.selectedRow.nextSibling) {
+      this.selectedRow.removeAttribute("selected");
+    }
+    setSelectedRow(row);
   });
 }

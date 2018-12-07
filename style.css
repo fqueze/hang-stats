@@ -80,3 +80,43 @@ td {
 td:last-child {
     text-overflow: ellipsis;
 }
+
+#tbody > tr[selected] > td {
+    background-color: var(--in-content-item-selected);
+    color: var(--in-content-selected-text);
+}
+#tbody > tr:hover {
+    background-color: var(--in-content-item-hover);
+}
+
+#stack {
+  position: fixed;
+  top: calc(2em + 3px);
+  right: 0;
+  width: 40%;
+  height: calc(100% - 2em - 3px);
+  background: var(--in-content-box-background);
+  border-left: 1px solid var(--in-content-border-color);
+  overflow-y: scroll;
+  overflow-x: hidden;
+}
+
+ul {
+  margin: 0;
+  padding: 0;
+}
+
+
+li {
+  line-height: 2em;
+  display:block;
+  padding: 0 1rem;
+}
+li:hover {
+  background-color: var(--in-content-item-hover);
+}
+
+li.hidden-frame {
+  color: grey;
+  font-size: smaller;
+}
