@@ -1,5 +1,4 @@
-var gdata;
-var ghangs;
+var gHangs, gTotalTime = 0, gTotalCount = 0;
 
 const kMaxRows = 50;
 
@@ -71,7 +70,7 @@ async function fetchHangs(size) {
   await updateProgressMessage(message, `Parsing ${file}...`);
   let data = await response.json();
   await updateProgressMessage(message, `Processing ${file}...`);
-  gdata = data;
+
   let thread;
   for (thread of data.threads)
     if (thread.name == "Gecko" && thread.processType == "default")
@@ -104,6 +103,7 @@ async function fetchHangs(size) {
           !funcName.includes("::InterposedNt")) {
         shouldRemovePrefix = false;
         if (frames.length > 1)
+          //          frames.splice(0, frames.length - 1);
           for (let i = 0; i < frames.length - 1; ++i)
             frames[i].hidden = "Foreign code";
       }
@@ -130,6 +130,7 @@ async function fetchHangs(size) {
           let f = frames[i];
           if ((!f.libName && isJSFuncName(f.funcName)) ||
               f.funcName.startsWith("static bool XPC_WN_"))
+            //            frames.splice(i + 1);
             for (let ii = i + 1; ii < frames.length; ++ii)
               frames[ii].hidden = "JS Engine Internal";
         }
@@ -138,6 +139,7 @@ async function fetchHangs(size) {
             ["XPTC__InvokebyIndex", "NS_InvokeByIndex"].includes(frames[frames.length - 3].funcName) &&
             frames[frames.length - 2].funcName.startsWith("XPCWrappedNative::CallMethod(") &&
             frames[frames.length - 1].funcName.startsWith("static bool XPC_WN_"))
+          //          frames.splice(frames.length - 3);
           for (let ii = frames.length - 3; ii < frames.length; ++ii)
             frames[ii].hidden = "JS Engine Internal";
       }
@@ -176,6 +178,19 @@ function displayHangs(hangs, filterString) {
 
   let count = 0;
   let totalCount = 0, totalTime = 0;
+  function setTimeTitle(elt, time) {
+    let percent = Math.round(time / gTotalTime * 10000) / 100;
+    if (percent > 0)
+      percent = percent.toLocaleString();
+    else
+      percent = "< " + (0.01).toLocaleString();
+    percent += "% of total hang time";
+    const kHourInMs = 3600000;
+    if (time > kHourInMs)
+      elt.title = `${(Math.round(time / kHourInMs * 10) / 10).toLocaleString()}h - ${percent}`;
+    else
+      elt.title = percent;
+  }
   for (let hang of hangs) {
     let tr = document.createElement("tr");
 
@@ -185,8 +200,7 @@ function displayHangs(hangs, filterString) {
 
     td = document.createElement("td");
     td.textContent = formatTime(hang.duration).toLocaleString();
-    if (hang.duration > 3600000)
-      td.title = `${(Math.round(hang.duration / 360000) / 10).toLocaleString()}h`;
+    setTimeTitle(td, hang.duration);
     tr.appendChild(td);
     totalTime += hang.duration;
 
@@ -196,11 +210,17 @@ function displayHangs(hangs, filterString) {
     totalCount += hang.count;
 
     td = document.createElement("td");
-    let frameId = 0;
-    while (hang.frames[frameId].hidden)
-      ++frameId;
-    let {funcName, libName} = hang.frames[frameId];
-    td.textContent = `${funcName} ${libName}`;
+    if (hang.frames.length) {
+      let frameId = 0;
+      while (hang.frames[frameId] && hang.frames[frameId].hidden)
+        ++frameId;
+      if (!hang.frames[frameId])
+        console.log(hang);
+      let {funcName, libName} = hang.frames[frameId];
+      td.textContent = `${funcName} ${libName}`;
+    } else {
+      td.textContent = "(empty stack)";
+    }
     tr.hang = hang;
     tr.appendChild(td);
 
@@ -221,8 +241,7 @@ function displayHangs(hangs, filterString) {
       
       td = document.createElement("td");
       td.textContent = formatTime(totalTime).toLocaleString();
-      if (totalTime > 3600000)
-        td.title = `${(Math.round(totalTime / 360000) / 10).toLocaleString()}h`;
+      setTimeTitle(td, totalTime);
       tr.appendChild(td);
 
       td = document.createElement("td");
@@ -288,7 +307,7 @@ window.onload = async function() {
     setTimeout(resolve, 0);
   }));
   
-  ghangs = [];
+  gHangs = [];
   let hangsMap = new Map();
   for (let hangsArray of allHangs) {
     for (let hang of hangsArray) {
@@ -299,13 +318,17 @@ window.onload = async function() {
         existingHang.count += hang.count;
         continue;
       }
-      ghangs.push(hang);
+      gHangs.push(hang);
       hangsMap.set(stack, hang);
     }
   }
   
-  ghangs.sort((a, b) => b.duration - a.duration);
-  displayHangs(ghangs, filterString);
+  gHangs.sort((a, b) => b.duration - a.duration);
+  for (let hang of gHangs) {
+    gTotalTime += hang.duration;
+    gTotalCount += hang.count;
+  }
+  displayHangs(gHangs, filterString);
 
   document.getElementById("progress").remove();
 
@@ -314,7 +337,7 @@ window.onload = async function() {
     filterString = event.target.value;
     urlHash.set("filter", filterString);
     document.location.hash = urlHash.toString();
-    displayHangs(ghangs, filterString);
+    displayHangs(gHangs, filterString);
     updateTitle();
   });
 
@@ -325,13 +348,27 @@ window.onload = async function() {
     setSelectedRow(row);
   });
 
-  tbody.addEventListener("keydown", event => {
+  document.addEventListener("keydown", event => {
+    if (event.target != document.querySelector("body") &&
+        event.target != document.querySelector("html"))
+      return;
+
     // Handle selection changes
-    console.log(event);
-    let row = event.target.parentNode;
-    if (this.selectedRow && this.selectedRow.nextSibling) {
-      this.selectedRow.removeAttribute("selected");
+    if (event.key == "ArrowDown") {
+      if (!gSelectedRow)
+        setSelectedRow(document.querySelector("tbody > tr"));
+      else if (gSelectedRow.nextSibling &&
+               !gSelectedRow.nextSibling.id) // avoid selecting the footer.
+        setSelectedRow(gSelectedRow.nextSibling);
+      event.preventDefault();
+      gSelectedRow.scrollIntoView();
     }
-    setSelectedRow(row);
+
+    if (event.key == "ArrowUp") {
+      if (gSelectedRow && gSelectedRow.previousSibling)
+        setSelectedRow(gSelectedRow.previousSibling);
+      event.preventDefault();
+      gSelectedRow.scrollIntoView();
+    }
   });
 }
