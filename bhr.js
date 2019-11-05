@@ -4,9 +4,7 @@ const kMaxRows = 50;
 
 // The values are the down sampling rates for the various hang sizes.
 const hangFiles = {
-  "128_512": 0.02,
-  "512_2048": 0.1,
-  "2048_65536": 0.5,
+  "128_65536": 1,
 };
 
 function showProgressMessage(text) {
@@ -64,6 +62,8 @@ function getStackForHang(hang) {
 
 async function fetchHangs(size) {
   let file = `hang_profile_${size}.json`;
+  file = "TEST_hang_profile_128_65536__incremental_20191018.json";
+
   let message = showProgressMessage(`Fetching ${file}...`);
   let url = `https://analysis-output.telemetry.mozilla.org/bhr/data/hang_aggregates/${file}`;
   let response = await fetch(url);
