@@ -40,24 +40,16 @@ function updateTitle() {
   document.title = title.join(" - ");
 }
 
-function getStackForHang(hang) {
-  let stack = [];//39662 38366
-//  let shouldRemovePrefix = true;
-  for (let {funcName, libName, hidden} of hang.frames) {
-/*    if (shouldRemovePrefix &&
-        ["xul", "XUL", "libxul.so",
-         "mozglue", "libmozglue.so"].includes(libName)) {
-      shouldRemovePrefix = false;
-      if (stack.length > 1)
-        stack.splice(0, stack.length - 1);
-    }*/
+function getStackIdForHang(hang) {
+  let stack = [];
+  for (let {frameId, funcName, hidden} of hang.frames) {
     if (funcName.startsWith("NS_ProcessNextEvent(nsIThread"))
       break;
     if (hidden)
       continue;
-    stack.push(funcName + " " + libName);
+    stack.push(frameId);
   }
-  return stack.join("\n");
+  return stack.join(";");
 }
 
 async function fetchHangs(size) {
@@ -88,14 +80,14 @@ async function fetchHangs(size) {
     let shouldRemovePrefix = true;
 
     while (stack) {
-      let func = thread.stackTable.func[stack];
-      let funcName = thread.stringArray[thread.funcTable.name[func]];
+      let frameId = thread.stackTable.func[stack];
+      let funcName = thread.stringArray[thread.funcTable.name[frameId]];
       // Stacks with nested event loops are confusing, stop walking the stack
       // as soon as we reach the event queue.
       if (funcName.startsWith("NS_ProcessNextEvent(nsIThread"))
         break;
-      let libName = thread.libs[thread.funcTable.lib[func]].name;
-
+      let libName = thread.libs[thread.funcTable.lib[frameId]].name;
+      
       // Leave only one non-Mozilla frame at the top of the stack.
       if (shouldRemovePrefix &&
           ["xul", "XUL", "libxul.so", //"nss3", "libnss3.dylib",
@@ -144,7 +136,7 @@ async function fetchHangs(size) {
             frames[ii].hidden = "JS Engine Internal";
       }
       
-      frames.push({funcName, libName, hidden: ""});
+      frames.push({frameId, funcName, libName, hidden: ""});
       stack = thread.stackTable.prefix[stack];
     }
     hangs.push({duration: Math.round(day.sampleHangMs[id] * usageHours),
@@ -278,7 +270,6 @@ function setSelectedRow(row) {
   if (row && row.hang) {
     row.setAttribute("selected", "true");
     gSelectedRow = row;
-    //    let stack = getStackForHang(row.hang);
     let escape = s => s.replace(/&/g, "&amp;")
                        .replace(/</g, "&lt;")
                        .replace(/>/g, "&gt;");
@@ -311,7 +302,7 @@ window.onload = async function() {
   let hangsMap = new Map();
   for (let hangsArray of allHangs) {
     for (let hang of hangsArray) {
-      let stack = getStackForHang(hang);
+      let stack = getStackIdForHang(hang);
       if (hangsMap.has(stack)) {
         let existingHang = hangsMap.get(stack);
         existingHang.duration += hang.duration;
