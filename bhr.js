@@ -1,5 +1,5 @@
 var gHangs, gTotalTime = 0, gTotalCount = 0;
-
+var gThread;
 const kMaxRows = 50;
 
 // The values are the down sampling rates for the various hang sizes.
@@ -15,11 +15,14 @@ function showProgressMessage(text) {
   return message;
 }
 
-function updateProgressMessage(message, text) {
-  message.textContent = text;
+function promiseAnimationFrame() {
   return new Promise(resolve => window.requestAnimationFrame(() => {
     setTimeout(resolve, 0);
   }));
+}
+function updateProgressMessage(message, text) {
+  message.textContent = text;
+  return promiseAnimationFrame();
 }
 
 var gdate, filterString;
@@ -40,41 +43,24 @@ function updateTitle() {
   document.title = title.join(" - ");
 }
 
-function getStackIdForHang(hang) {
-  let stack = [];
-  for (let {frameId, funcName, hidden} of hang.frames) {
-    if (funcName.startsWith("NS_ProcessNextEvent(nsIThread"))
-      break;
-    if (hidden)
-      continue;
-    stack.push(frameId);
-  }
-  return stack.join(";");
+const kJSFuncNameExp = /\.js|\.xul|^self-hosted:/;
+
+const kJSInternalPrefixes = [
+  "js::", "JS::",
+  "static bool InternalCall",
+  "static bool Interpret",
+  "static bool js::",
+  "bool js::",
+  "static bool SetExistingProperty",
+  "(unresolved)",
+];
+function escapeForRegExp(string) {
+  const exp = /[[\]{}()*+?.\\^$|]/g;
+  return string.replace(exp, "\\$&");
 }
+const kJSInternalFrameExp = new RegExp("^(?:" + kJSInternalPrefixes.map(escapeForRegExp).join("|") + ")");
 
-async function fetchHangs(size) {
-  let file = `hang_profile_${size}.json`;
-  file = "TEST_hang_profile_128_65536__incremental_20191018.json";
-
-  let message = showProgressMessage(`Fetching ${file}...`);
-  let url = `https://analysis-output.telemetry.mozilla.org/bhr/data/hang_aggregates/${file}`;
-  let response = await fetch(url);
-  await updateProgressMessage(message, `Parsing ${file}...`);
-  let data = await response.json();
-  await updateProgressMessage(message, `Processing ${file}...`);
-
-  let thread;
-  for (thread of data.threads)
-    if (thread.name == "Gecko" && thread.processType == "default")
-      break;
-  let day = thread.dates[0];
-  let date = day.date;
-  setDate(date);
-  let usageHours = data.usageHoursByDate[date] / hangFiles[size];
-
-  let hangs = [];
-  let hangCount = day.sampleHangMs.length;
-  for (let id = 0; id < hangCount; ++id) {
+function getHangFrames(thread, id) {
     let frames = [];
     let stack = thread.sampleTable.stack[id];
     let shouldRemovePrefix = true;
@@ -101,22 +87,13 @@ async function fetchHangs(size) {
       }
 
       function isJSFuncName(n) {
-        return n.includes(".js") || n.includes(".xul") || n.startsWith("self-hosted:");
+        return kJSFuncNameExp.test(n);
       }
       if (!libName && isJSFuncName(funcName) && frames.length) {
         // We are on a JS frame, trim all the previous frames that are internal
         // to the JS engine.
         let i = frames.length - 1;
-        const kJSInternalPrefixes = [
-          "js::", "JS::",
-          "static bool InternalCall",
-          "static bool Interpret",
-          "static bool js::",
-          "bool js::",
-          "static bool SetExistingProperty",
-          "(unresolved)",
-        ];
-        while (i && kJSInternalPrefixes.some(p => frames[i].funcName.startsWith(p)))
+        while (i && kJSInternalFrameExp.test(frames[i].funcName))
           --i;
         if (frames[i]) {
           let f = frames[i];
@@ -139,13 +116,47 @@ async function fetchHangs(size) {
       frames.push({frameId, funcName, libName, hidden: ""});
       stack = thread.stackTable.prefix[stack];
     }
+  return frames;
+}
+
+async function fetchHangs(size) {
+  let file = `hang_profile_${size}.json`;
+  file = "TEST_hang_profile_128_65536__incremental_20191018.json";
+
+  let message = showProgressMessage(`Fetching ${file}...`);
+  let url = `https://analysis-output.telemetry.mozilla.org/bhr/data/hang_aggregates/${file}`;
+  let response = await fetch(url);
+  await updateProgressMessage(message, `Parsing ${file}...`);
+  let data = await response.json();
+  await updateProgressMessage(message, `Processing ${file}...`);
+
+  let thread;
+  for (thread of data.threads)
+    if (thread.name == "Gecko" && thread.processType == "default")
+      break;
+  let day = thread.dates[0];
+  let date = day.date;
+  setDate(date);
+  let usageHours = data.usageHoursByDate[date] / hangFiles[size];
+
+  let hangs = [];
+  let hangCount = day.sampleHangMs.length;
+  let startTime = Date.now();
+  for (let id = 0; id < hangCount; ++id) {
+    if (Date.now() - startTime > 40) {
+      await promiseAnimationFrame();
+      startTime = Date.now();
+    }
+
+    let frames = getHangFrames(thread, id);
     hangs.push({duration: Math.round(day.sampleHangMs[id] * usageHours),
                 count: Math.round(day.sampleHangCount[id] * usageHours),
-                frames});
+                id,
+                frameIds: frames.filter(f => !f.hidden).map(f => f.frameId)});
   }
 
   message.remove();
-  return hangs;
+  return {thread, hangs};
 }
 
 function formatTime(time) {
@@ -154,15 +165,34 @@ function formatTime(time) {
   return time / 1000;
 }
 
+var gFramesToFilter;
+
 function displayHangs(hangs, filterString) {
   if (filterString) {
-    let filterFun = (value, filter) => value.includes(filter);
+    if (!gFramesToFilter) {
+      gFramesToFilter = new Set();
+      for (let hang of hangs) {
+        for (let frameId of hang.frameIds) {
+          gFramesToFilter.add(frameId);
+        }
+      }
+    }
+
+    let filterFun = value => value.includes(filterString);
     // Make the filter case insensitive if the filter string is all lower case.
     if (filterString.toLowerCase() == filterString) {
-      filterFun = (value, filter) => value.toLowerCase().includes(filter);
+      filterFun = value => value.toLowerCase().includes(filterString);
     }
-    hangs = hangs.filter(h => h.frames.some(f => filterFun(f.funcName, filterString) ||
-                                                 filterFun(f.libName, filterString)));
+
+    let filteredFrames = new Set();
+    let funcName = frameId => gThread.stringArray[gThread.funcTable.name[frameId]];
+    let libName = frameId => gThread.libs[gThread.funcTable.lib[frameId]].name;
+    for (let f of gFramesToFilter) {
+      if (filterFun(funcName(f)) || filterFun(libName(f))) {
+        filteredFrames.add(f);
+      }
+    }
+    hangs = hangs.filter(h => h.frameIds.some(f => filteredFrames.has(f)));
   }
   let tbody = document.getElementById("tbody");
   while (tbody.firstChild)
@@ -202,18 +232,20 @@ function displayHangs(hangs, filterString) {
     totalCount += hang.count;
 
     td = document.createElement("td");
-    if (hang.frames.length) {
+    let frames = getHangFrames(gThread, hang.id);
+    if (frames.length) {
       let frameId = 0;
-      while (hang.frames[frameId] && hang.frames[frameId].hidden)
+      while (frames[frameId] && frames[frameId].hidden)
         ++frameId;
-      if (!hang.frames[frameId])
+      if (!frames[frameId])
         console.log(hang);
-      let {funcName, libName} = hang.frames[frameId];
+      let {funcName, libName} = frames[frameId];
       td.textContent = `${funcName} ${libName}`;
     } else {
       td.textContent = "(empty stack)";
     }
     tr.hang = hang;
+    tr.frames = frames;
     tr.appendChild(td);
 
     tbody.appendChild(tr);
@@ -274,7 +306,7 @@ function setSelectedRow(row) {
                        .replace(/</g, "&lt;")
                        .replace(/>/g, "&gt;");
     div.innerHTML = `<ul>${
-      row.hang.frames.map(f =>
+      row.frames.map(f =>
         (f.hidden ? `<li class="hidden-frame" title="${f.hidden}">`
                   : "<li>") +
         `${escape(f.funcName)} ${escape(f.libName)}</li>`)
@@ -293,16 +325,21 @@ window.onload = async function() {
     filterInput.value = filterString;
 
   let allHangs = await Promise.all(Object.keys(hangFiles).map(fetchHangs));
-  showProgressMessage("Merging and sorting...");
-  await new Promise(resolve => window.requestAnimationFrame(() => {
-    setTimeout(resolve, 0);
-  }));
-  
+  let message = showProgressMessage("Merging...");
+  await promiseAnimationFrame();
+
   gHangs = [];
   let hangsMap = new Map();
-  for (let hangsArray of allHangs) {
+  let startTime = Date.now();
+  for (let {hangs: hangsArray, thread} of allHangs) {
+    gThread = thread;
     for (let hang of hangsArray) {
-      let stack = getStackIdForHang(hang);
+      if (Date.now() - startTime > 40) {
+        await promiseAnimationFrame();
+        startTime = Date.now();
+      }
+
+      let stack = hang.frameIds.toString();
       if (hangsMap.has(stack)) {
         let existingHang = hangsMap.get(stack);
         existingHang.duration += hang.duration;
@@ -313,12 +350,15 @@ window.onload = async function() {
       hangsMap.set(stack, hang);
     }
   }
-  
+
+  await updateProgressMessage(message, "Sorting...");
   gHangs.sort((a, b) => b.duration - a.duration);
   for (let hang of gHangs) {
     gTotalTime += hang.duration;
     gTotalCount += hang.count;
   }
+
+  await updateProgressMessage(message, "Filtering...");
   displayHangs(gHangs, filterString);
 
   document.getElementById("progress").remove();
