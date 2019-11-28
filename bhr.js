@@ -29,6 +29,16 @@ function updateProgressMessage(message, text) {
   return promiseAnimationFrame();
 }
 
+function getURLSearchParams() {
+  return new URLSearchParams(document.location.hash.slice(1));
+}
+
+function setURLSearchParam(param, value) {
+  let URLHash = getURLSearchParams();
+  URLHash.set(param, value);
+  document.location.hash = URLHash.toString();
+}
+
 var gdate, filterString;
 function setDate(date) {
   if (gdate)
@@ -314,7 +324,12 @@ async function displayHangs(hangs, filterString, message) {
     tr.appendChild(td);
     tbody.appendChild(tr);
   }
-  setSelectedRow(null);
+  let rowId = getURLSearchParams().get("row");
+  let row;
+  for (row = tbody.firstChild; rowId && row; --rowId)
+    row = row.nextSibling;
+  setSelectedRow(row);
+  row.scrollIntoView();
 }
 
 let gSelectedRow;
@@ -336,14 +351,20 @@ function setSelectedRow(row) {
         `${escape(f.funcName)} ${escape(f.libName)}</li>`)
          .join('')
     }</ul>`;
+    let rowId = 0;
+    for (let r = row.previousSibling; r; r = r.previousSibling) {
+      ++rowId;
+    }
+    setURLSearchParam("row", rowId);
   } else if (gSelectedRow) {
     gSelectedRow = null;
     div.innerHTML = "";
+    setURLSearchParam("row", "");
   }
 }
 
 window.onload = async function() {
-  filterString = new URLSearchParams(document.location.hash.slice(1)).get("filter");
+  filterString = getURLSearchParams().get("filter");
   let filterInput = document.getElementById("filter");
   if (filterString)
     filterInput.value = filterString;
@@ -387,10 +408,8 @@ window.onload = async function() {
   setProgressMessageVisibility(false);
 
   filterInput.addEventListener("input", event => {
-    let urlHash = new URLSearchParams(document.location.hash.slice(1));
     filterString = event.target.value;
-    urlHash.set("filter", filterString);
-    document.location.hash = urlHash.toString();
+    setURLSearchParam("filter", filterString);
     updateTitle();
     displayHangs(gHangs, filterString, message);
   });
