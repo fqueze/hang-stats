@@ -15,6 +15,10 @@ function showProgressMessage(text) {
   return message;
 }
 
+function setProgressMessageVisibility(visible) {
+  document.getElementById("progress").style = visible ? "" : "display: none;";
+}
+
 function promiseAnimationFrame() {
   return new Promise(resolve => window.requestAnimationFrame(() => {
     setTimeout(resolve, 0);
@@ -168,8 +172,15 @@ function formatTime(time) {
 
 var gFramesToFilter;
 
-function displayHangs(hangs, filterString) {
+async function displayHangs(hangs, filterString, message) {
+  let tbody = document.getElementById("tbody");
+  while (tbody.firstChild)
+    tbody.firstChild.remove();
+
   if (filterString) {
+    setProgressMessageVisibility(true);
+    await updateProgressMessage(message, "Filtering...");
+
     if (!gFramesToFilter) {
       gFramesToFilter = new Set();
       for (let hang of hangs) {
@@ -193,11 +204,23 @@ function displayHangs(hangs, filterString) {
         filteredFrames.add(f);
       }
     }
-    hangs = hangs.filter(h => h.frameIds.some(f => filteredFrames.has(f)));
+    let startTime = Date.now();
+    let filteredHangs = [];
+    for (let hang of hangs) {
+      if (Date.now() - startTime > 40) {
+        await promiseAnimationFrame();
+        if (document.getElementById("filter").value != filterString) {
+          return;
+        }
+        startTime = Date.now();
+      }
+      if (hang.frameIds.some(f => filteredFrames.has(f))) {
+        filteredHangs.push(hang);
+      }
+    }
+    hangs = filteredHangs;
   }
-  let tbody = document.getElementById("tbody");
-  while (tbody.firstChild)
-    tbody.firstChild.remove();
+  setProgressMessageVisibility(false);
 
   let count = 0;
   let totalCount = 0, totalTime = 0;
@@ -359,18 +382,17 @@ window.onload = async function() {
     gTotalCount += hang.count;
   }
 
-  await updateProgressMessage(message, "Filtering...");
-  displayHangs(gHangs, filterString);
+  await displayHangs(gHangs, filterString, message);
 
-  document.getElementById("progress").remove();
+  setProgressMessageVisibility(false);
 
   filterInput.addEventListener("input", event => {
     let urlHash = new URLSearchParams(document.location.hash.slice(1));
     filterString = event.target.value;
     urlHash.set("filter", filterString);
     document.location.hash = urlHash.toString();
-    displayHangs(gHangs, filterString);
     updateTitle();
+    displayHangs(gHangs, filterString, message);
   });
 
   let tbody = document.getElementById("tbody");
