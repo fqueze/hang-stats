@@ -327,7 +327,7 @@ async function displayHangs(hangs, filterString, message) {
     tr.appendChild(td);
     tbody.appendChild(tr);
   }
-  let rowId = getURLSearchParams().get("row");
+  let rowId = parseInt(getURLSearchParams().get("row"));
   let row;
   for (row = tbody.firstChild; rowId && row; --rowId)
     row = row.nextSibling;
