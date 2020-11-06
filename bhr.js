@@ -136,10 +136,13 @@ function getHangFrames(thread, id) {
 async function fetchHangs(size) {
   let file = `hang_profile_${size}.json`;
   file = "TEST_hang_profile_128_65536__incremental_20191117.json";
+  file = "hangs_main_current.json";
+//  file = "hangs_main_20200927.json";
 
   let message = showProgressMessage(`Fetching ${file}...`);
   let url = `https://analysis-output.telemetry.mozilla.org/bhr/data/hang_aggregates/${file}`;
-  url = "./" + file;
+  if (window.location.protocol == "file:")
+    url = "./" + file;
   let response = await fetch(url);
   await updateProgressMessage(message, `Parsing ${file}...`);
   let data = await response.json();
