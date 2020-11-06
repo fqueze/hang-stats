@@ -96,7 +96,6 @@ function getHangFrames(thread, id) {
           !funcName.includes("::InterposedNt")) {
         shouldRemovePrefix = false;
         if (frames.length > 1)
-          //          frames.splice(0, frames.length - 1);
           for (let i = 0; i < frames.length - 1; ++i)
             frames[i].hidden = "Foreign code";
       }
@@ -114,7 +113,6 @@ function getHangFrames(thread, id) {
           let f = frames[i];
           if ((!f.libName && isJSFuncName(f.funcName)) ||
               f.funcName.startsWith("static bool XPC_WN_"))
-            //            frames.splice(i + 1);
             for (let ii = i + 1; ii < frames.length; ++ii)
               frames[ii].hidden = "JS Engine Internal";
         }
@@ -123,7 +121,6 @@ function getHangFrames(thread, id) {
             ["XPTC__InvokebyIndex", "NS_InvokeByIndex"].includes(frames[frames.length - 3].funcName) &&
             frames[frames.length - 2].funcName.startsWith("XPCWrappedNative::CallMethod(") &&
             frames[frames.length - 1].funcName.startsWith("static bool XPC_WN_"))
-          //          frames.splice(frames.length - 3);
           for (let ii = frames.length - 3; ii < frames.length; ++ii)
             frames[ii].hidden = "JS Engine Internal";
       }
