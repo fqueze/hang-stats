@@ -73,6 +73,7 @@ function escapeForRegExp(string) {
   return string.replace(exp, "\\$&");
 }
 const kJSInternalFrameExp = new RegExp("^(?:" + kJSInternalPrefixes.map(escapeForRegExp).join("|") + ")");
+var gBugSignatureExp;
 
 function getHangFrames(thread, id) {
     let frames = [];
@@ -133,6 +134,25 @@ function getHangFrames(thread, id) {
   return frames;
 }
 
+async function fetchBugs() {
+  let message = showProgressMessage("Fetching list of known bugs...");
+
+  let bugListRequest = await fetch("https://bugzilla.mozilla.org/rest/bug?include_fields=id,summary,status,whiteboard&bug_status=UNCONFIRMED&bug_status=NEW&bug_status=ASSIGNED&bug_status=REOPENED&f1=classification&field0-0-0=status_whiteboard&o1=notequals&type0-0-0=substring&v1=Graveyard&value0-0-0=[bhr%3A");
+  let bugList = await bugListRequest.json();
+  let bugsMap = new Map();
+  let signatures = [];
+  for (let bug of bugList.bugs) {
+    let signature = bug.whiteboard.replace(/.*\[bhr:/, "").replace(/].*/, "");
+    bugsMap.set(signature, {id: bug.id, status: bug.status, summary: bug.summary});
+    signatures.push(escapeForRegExp(signature));
+  }
+
+  gBugSignatureExp = new RegExp(signatures.join("|"), "g");
+
+  message.remove();
+  return bugsMap;
+};
+
 async function fetchHangs(size) {
   let file = `hang_profile_${size}.json`;
   file = "TEST_hang_profile_128_65536__incremental_20191117.json";
@@ -166,11 +186,12 @@ async function fetchHangs(size) {
       startTime = Date.now();
     }
 
-    let frames = getHangFrames(thread, id);
+    let frames = getHangFrames(thread, id).filter(f => !f.hidden);
     hangs.push({duration: Math.round(day.sampleHangMs[id] * usageHours),
                 count: Math.round(day.sampleHangCount[id] * usageHours),
                 id,
-                frameIds: frames.filter(f => !f.hidden).map(f => f.frameId)});
+                frames,
+                frameIds: frames.map(f => f.frameId)});
   }
 
   message.remove();
@@ -281,6 +302,10 @@ async function displayHangs(hangs, filterString, message) {
     } else {
       td.textContent = "(empty stack)";
     }
+    if (hang.knownBug) {
+      let {id, status, summary} = hang.knownBug;
+      td.innerHTML = `<a title="${status} - ${summary}" href="https://bugzilla.mozilla.org/show_bug.cgi?id=${id}">Bug ${id}</a> - ${summary}`;
+    }
     tr.hang = hang;
     tr.frames = frames;
     tr.appendChild(td);
@@ -372,6 +397,9 @@ window.onload = async function() {
   if (filterString)
     filterInput.value = filterString;
 
+  let bugsPromise = fetchBugs();
+  let bugs = await bugsPromise;
+
   let allHangs = await Promise.all(Object.keys(hangFiles).map(fetchHangs));
   let message = showProgressMessage("Merging...");
   await promiseAnimationFrame();
@@ -387,6 +415,7 @@ window.onload = async function() {
         startTime = Date.now();
       }
 
+      // De-duplicate hangs that have identical processed stacks.
       let stack = hang.frameIds.toString();
       if (hangsMap.has(stack)) {
         let existingHang = hangsMap.get(stack);
@@ -394,6 +423,26 @@ window.onload = async function() {
         existingHang.count += hang.count;
         continue;
       }
+
+      // De-duplicate hangs for the same known bug.
+      let signature;
+      for (let frame of hang.frames) {
+        signature = frame.funcName.match(gBugSignatureExp);
+        if (signature)
+          break;
+      }
+      if (signature) {
+        let bug = bugs.get(signature[0]);
+        if (bug.hang) {
+          bug.hang.duration += hang.duration;
+          bug.hang.count += hang.count;
+          continue;
+        }
+        hang.knownBug = bug;
+        bug.hang = hang;
+      }
+      // This hang is not in our merged list yet, add it.
+      hang.frames = undefined;
       gHangs.push(hang);
       hangsMap.set(stack, hang);
     }
