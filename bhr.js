@@ -332,7 +332,7 @@ async function displayHangs(hangs, filterString, message) {
       tr.appendChild(td);
 
       td = document.createElement("td");
-      td.textContent = `And ${hangs.length - count} other stacks...`;
+      td.textContent = `And ${(hangs.length - count).toLocaleString()} other stacks...`;
 
       tr.appendChild(td);
       tbody.appendChild(tr);
