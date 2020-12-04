@@ -85,7 +85,7 @@ function getHangFrames(thread, id) {
       let funcName = thread.stringArray[thread.funcTable.name[frameId]];
       // Stacks with nested event loops are confusing, stop walking the stack
       // as soon as we reach the event queue.
-      if (funcName.startsWith("NS_ProcessNextEvent(nsIThread"))
+      if (funcName.startsWith("nsThread::ProcessNextEvent(bool"))
         break;
       let libName = thread.libs[thread.funcTable.lib[frameId]].name;
       
@@ -398,6 +398,67 @@ window.onload = async function() {
   let bugs = await bugsPromise;
 
   let allHangs = await Promise.all(Object.keys(hangFiles).map(fetchHangs));
+
+  if (getURLSearchParams().has("showFrames")) {
+    let frameUseCount;
+
+    let startTime = Date.now();
+    for (let {hangs: hangsArray, thread} of allHangs) {
+      gThread = thread;
+      frameUseCount = new Array(gThread.funcTable.length);
+      for (var i = 0; i < gThread.funcTable.length; ++i) {
+        frameUseCount[i] = {id: i, duration: 0, count: 0};
+      }
+
+      for (let hang of hangsArray) {
+        if (Date.now() - startTime > 40) {
+          await promiseAnimationFrame();
+          startTime = Date.now();
+        }
+
+        for (let frameId of hang.frameIds) {
+          let frame = frameUseCount[frameId];
+          frame.duration += hang.duration;
+          frame.count += hang.count;
+        }
+      }
+
+      frameUseCount.sort((a, b) => b.duration - a.duration);
+
+      let tbody = document.getElementById("tbody");
+      for (let i = 0; i < 1000; ++i) {
+        let frame = frameUseCount[i];
+        let funcName = gThread.stringArray[gThread.funcTable.name[frame.id]];
+        let libName = gThread.libs[gThread.funcTable.lib[frame.id]].name;
+        let duration = formatTime(frame.duration).toLocaleString();
+
+        let tr = document.createElement("tr");
+
+        let td = document.createElement("td");
+        td.textContent = i;
+        tr.appendChild(td);
+
+        td = document.createElement("td");
+        td.textContent = duration;
+        tr.appendChild(td);
+
+        td = document.createElement("td");
+        td.textContent = frame.count.toLocaleString();
+        tr.appendChild(td);
+
+        td = document.createElement("td");
+        td.textContent = `${funcName} ${libName}`;
+        tr.appendChild(td);
+
+        tbody.appendChild(tr);
+      }
+      document.getElementById("stackTitle").innerHTML = "Main thread hang frames from build " + gdate;
+      document.getElementById("stack").remove();
+      setProgressMessageVisibility(false);
+      return;
+    }
+  }
+
   let message = showProgressMessage("Merging...");
   await promiseAnimationFrame();
 
