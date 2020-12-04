@@ -416,7 +416,11 @@ window.onload = async function() {
           startTime = Date.now();
         }
 
+        let frameSet = new Set();
         for (let frameId of hang.frameIds) {
+          if (frameSet.has(frameId))
+            continue;
+          frameSet.add(frameId);
           let frame = frameUseCount[frameId];
           frame.duration += hang.duration;
           frame.count += hang.count;
