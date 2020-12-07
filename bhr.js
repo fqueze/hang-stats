@@ -75,6 +75,11 @@ function escapeForRegExp(string) {
 const kJSInternalFrameExp = new RegExp("^(?:" + kJSInternalPrefixes.map(escapeForRegExp).join("|") + ")");
 var gBugSignatureExp;
 
+function isMozLib(libName) {
+  return ["xul", "XUL", "libxul.so", //"nss3", "libnss3.dylib",
+          "mozglue", "libmozglue.so"].includes(libName);
+}
+
 function getHangFrames(thread, id) {
     let frames = [];
     let stack = thread.sampleTable.stack[id];
@@ -90,9 +95,7 @@ function getHangFrames(thread, id) {
       let libName = thread.libs[thread.funcTable.lib[frameId]].name;
       
       // Leave only one non-Mozilla frame at the top of the stack.
-      if (shouldRemovePrefix &&
-          ["xul", "XUL", "libxul.so", //"nss3", "libnss3.dylib",
-           "mozglue", "libmozglue.so"].includes(libName) &&
+      if (shouldRemovePrefix && isMozLib(libName) &&
           !funcName.includes("::InterposedNt")) {
         shouldRemovePrefix = false;
         if (frames.length > 1)
@@ -174,6 +177,10 @@ async function fetchHangs(size) {
   setDate(date);
   let usageHours = data.usageHoursByDate[date] / hangFiles[size];
 
+  let searchParams = getURLSearchParams();
+  let onlyXulLeaf = searchParams.has("onlyXulLeaf");
+  let skipKnownBugs = searchParams.has("skipKnownBugs");
+
   let hangs = [];
   let hangCount = day.sampleHangMs.length;
   let startTime = Date.now();
@@ -183,7 +190,18 @@ async function fetchHangs(size) {
       startTime = Date.now();
     }
 
-    let frames = getHangFrames(thread, id).filter(f => !f.hidden);
+    let allFrames = getHangFrames(thread, id);
+    if (onlyXulLeaf && allFrames.length &&
+        !isMozLib(allFrames[0].libName)) {
+      continue;
+    }
+
+    let frames = allFrames.filter(f => !f.hidden);
+    if (skipKnownBugs &&
+        frames.some(frame => !!frame.funcName.match(gBugSignatureExp))) {
+      continue;
+    }
+
     hangs.push({duration: Math.round(day.sampleHangMs[id] * usageHours),
                 count: Math.round(day.sampleHangCount[id] * usageHours),
                 id,
@@ -389,7 +407,8 @@ function setSelectedRow(row) {
 }
 
 window.onload = async function() {
-  filterString = getURLSearchParams().get("filter");
+  let searchParams = getURLSearchParams();
+  filterString = searchParams.get("filter");
   let filterInput = document.getElementById("filter");
   if (filterString)
     filterInput.value = filterString;
@@ -399,7 +418,7 @@ window.onload = async function() {
 
   let allHangs = await Promise.all(Object.keys(hangFiles).map(fetchHangs));
 
-  if (getURLSearchParams().has("showFrames")) {
+  if (searchParams.has("showFrames")) {
     let frameUseCount;
 
     let startTime = Date.now();
@@ -418,9 +437,12 @@ window.onload = async function() {
 
         let frameSet = new Set();
         for (let frameId of hang.frameIds) {
+          // Avoid counting multiple times frames that appear multiple times
+          // in the stack.
           if (frameSet.has(frameId))
             continue;
           frameSet.add(frameId);
+
           let frame = frameUseCount[frameId];
           frame.duration += hang.duration;
           frame.count += hang.count;
