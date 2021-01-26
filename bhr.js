@@ -142,9 +142,11 @@ async function fetchBugs() {
   let bugsMap = new Map();
   let signatures = [];
   for (let bug of bugList.bugs) {
-    let signature = bug.whiteboard.replace(/.*\[bhr:/, "").replace(/].*/, "");
-    bugsMap.set(signature, {id: bug.id, status: bug.status, summary: bug.summary});
-    signatures.push(escapeForRegExp(signature));
+    let bugObj = {id: bug.id, status: bug.status, summary: bug.summary};
+    for (let [fullTag, signature] of bug.whiteboard.matchAll(/\[bhr:(.*?)\]/g)) {
+      bugsMap.set(signature, bugObj);
+      signatures.push(escapeForRegExp(signature));
+    }
   }
 
   gBugSignatureExp = new RegExp(signatures.join("|"), "g");
