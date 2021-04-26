@@ -120,3 +120,7 @@ li.hidden-frame {
   color: grey;
   font-size: smaller;
 }
+
+.highlight {
+  background-color: var(--in-content-item-hover);
+}

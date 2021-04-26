@@ -395,11 +395,28 @@ function setSelectedRow(row) {
     let escape = s => s.replace(/&/g, "&amp;")
                        .replace(/</g, "&lt;")
                        .replace(/>/g, "&gt;");
+    function highlight(string) {
+      if (!filterString)
+        return escape(string);
+
+      let index;
+      // The filter is case insensitive if the filter string is all lower case.
+      if (filterString.toLowerCase() == filterString) {
+        index = string.toLowerCase().indexOf(filterString);
+      } else {
+        index = string.indexOf(filterString);
+      }
+      if (index == -1)
+        return escape(string);
+      return escape(string.slice(0, index)) +
+        '<span class="highlight">' + escape(string.slice(index, index + filterString.length)) + "</span>" +
+        escape(string.slice(index + filterString.length));
+    }
     div.innerHTML = `<ul>${
       row.frames.map(f =>
         (f.hidden ? `<li class="hidden-frame" title="${f.hidden}">`
                   : "<li>") +
-        `${escape(f.funcName)} ${escape(f.libName)}</li>`)
+        `${highlight(f.funcName)} ${highlight(f.libName)}</li>`)
          .join('')
     }</ul>`;
     let rowId = 0;
