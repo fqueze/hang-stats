@@ -83,8 +83,12 @@ td:last-child {
 
 #tbody > tr[selected] > td {
     background-color: var(--in-content-item-selected);
-    color: var(--in-content-selected-text);
+    color: var(--in-content-item-selected-text);
 }
+#tbody > tr[selected] > td > a {
+    color: var(--in-content-item-selected-text);
+}
+
 #tbody > tr:hover {
     background-color: var(--in-content-item-hover);
 }
