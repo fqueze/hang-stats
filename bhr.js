@@ -373,8 +373,14 @@ async function displayHangs(hangs, filterString, message) {
   let row;
   for (row = tbody.firstChild; rowId && row; --rowId)
     row = row.nextSibling;
+  if (!row) {
+    // If the rowId in the url is larger than the row count, fall back
+    // to selecting the first row.
+    row = tbody.firstChild;
+  }
   setSelectedRow(row);
-  row.scrollIntoView();
+  if (row)
+    row.scrollIntoView();
 }
 
 let gSelectedRow;
