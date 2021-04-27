@@ -142,9 +142,10 @@ async function fetchBugs() {
   let bugsMap = new Map();
   let signatures = [];
   for (let bug of bugList.bugs) {
-    let bugObj = {id: bug.id, status: bug.status, summary: bug.summary};
+    let bugObj = {id: bug.id, status: bug.status, summary: bug.summary, signatures: []};
     for (let [fullTag, signature] of bug.whiteboard.matchAll(/\[bhr:(.*?)\]/g)) {
       bugsMap.set(signature, bugObj);
+      bugObj.signatures.push(fullTag);
       signatures.push(escapeForRegExp(signature));
     }
   }
@@ -412,7 +413,16 @@ function setSelectedRow(row) {
         '<span class="highlight">' + escape(string.slice(index, index + filterString.length)) + "</span>" +
         escape(string.slice(index + filterString.length));
     }
-    div.innerHTML = `<ul>${
+    let annotation = "";
+    if (row.hang.knownBug) {
+      annotation =
+        `<div id="bugzilla-annotation">
+           <span id="annotation-label">Bugzilla annotation:</span><ul>${
+             row.hang.knownBug.signatures.map(a => "<li>" + escape(a) + "</li>").join("")
+           }</ul>
+         </div>`;
+    }
+    div.innerHTML = `${annotation}<ul>${
       row.frames.map(f =>
         (f.hidden ? `<li class="hidden-frame" title="${f.hidden}">`
                   : "<li>") +
