@@ -14,7 +14,16 @@ function setProgressMessageVisibility(visible) {
   document.getElementById("progress").style = visible ? "" : "display: none;";
 }
 
+function promiseUnblockMainThread() {
+  // Avoid blocking if the tab is in the background
+  if (document.hidden)
+    return Promise.resolve();
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
 function promiseAnimationFrame() {
+  if (document.hidden)
+    return Promise.resolve();
   return new Promise(resolve => window.requestAnimationFrame(() => {
     setTimeout(resolve, 0);
   }));
@@ -235,7 +244,7 @@ async function fetchHangs(requestedDate, bugsPromise) {
   let startTime = Date.now();
   for (let id = 0; id < hangCount; ++id) {
     if (Date.now() - startTime > 40) {
-      await promiseAnimationFrame();
+      await promiseUnblockMainThread();
       startTime = Date.now();
     }
 
@@ -306,7 +315,7 @@ async function displayHangs(hangs, filterString, message) {
     let filteredHangs = [];
     for (let hang of hangs) {
       if (Date.now() - startTime > 40) {
-        await promiseAnimationFrame();
+        await promiseUnblockMainThread();
         if (document.getElementById("filter").value != filterString) {
           return;
         }
@@ -510,7 +519,7 @@ window.onload = async function() {
 
     for (let hang of hangsArray) {
       if (Date.now() - startTime > 40) {
-        await promiseAnimationFrame();
+        await promiseUnblockMainThread();
         startTime = Date.now();
       }
 
@@ -571,7 +580,7 @@ window.onload = async function() {
   let startTime = Date.now();
   for (let hang of hangsArray) {
     if (Date.now() - startTime > 40) {
-      await promiseAnimationFrame();
+      await promiseUnblockMainThread();
       startTime = Date.now();
     }
 
