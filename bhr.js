@@ -2,11 +2,6 @@ var gHangs, gTotalTime = 0, gTotalCount = 0;
 var gThread;
 const kMaxRows = 50;
 
-// The values are the down sampling rates for the various hang sizes.
-const hangFiles = {
-  "128_65536": 1,
-};
-
 function showProgressMessage(text) {
   let message = document.createElement("p");
   message.textContent = text
@@ -185,7 +180,7 @@ async function fetchHangFile(date = "current") {
   return data;
 }
 
-async function fetchHangs(size) {
+async function fetchHangs() {
   let data = await fetchHangFile();
   let retries = 5;
   while (retries-- && !data.threads.length) {
@@ -210,10 +205,11 @@ async function fetchHangs(size) {
   for (thread of data.threads)
     if (thread.name == "Gecko" && thread.processType == "default")
       break;
+  gThread = thread;
   let day = thread.dates[0];
   let date = day.date;
   setDate(date);
-  let usageHours = data.usageHoursByDate[date] / hangFiles[size];
+  let usageHours = data.usageHoursByDate[date];
 
   let searchParams = getURLSearchParams();
   let onlyXulLeaf = searchParams.has("onlyXulLeaf");
@@ -248,7 +244,7 @@ async function fetchHangs(size) {
   }
 
   message.remove();
-  return {thread, hangs};
+  return hangs;
 }
 
 function formatTime(time) {
@@ -486,73 +482,70 @@ window.onload = async function() {
   let bugsPromise = fetchBugs();
   let bugs = await bugsPromise;
 
-  let allHangs = await Promise.all(Object.keys(hangFiles).map(fetchHangs));
+  let hangsArray = await fetchHangs();
 
   if (searchParams.has("showFrames")) {
     let frameUseCount;
 
     let startTime = Date.now();
-    for (let {hangs: hangsArray, thread} of allHangs) {
-      gThread = thread;
-      frameUseCount = new Array(gThread.funcTable.length);
-      for (var i = 0; i < gThread.funcTable.length; ++i) {
-        frameUseCount[i] = {id: i, duration: 0, count: 0};
-      }
-
-      for (let hang of hangsArray) {
-        if (Date.now() - startTime > 40) {
-          await promiseAnimationFrame();
-          startTime = Date.now();
-        }
-
-        let frameSet = new Set();
-        for (let frameId of hang.frameIds) {
-          // Avoid counting multiple times frames that appear multiple times
-          // in the stack.
-          if (frameSet.has(frameId))
-            continue;
-          frameSet.add(frameId);
-
-          let frame = frameUseCount[frameId];
-          frame.duration += hang.duration;
-          frame.count += hang.count;
-        }
-      }
-
-      frameUseCount.sort((a, b) => b.duration - a.duration);
-
-      let tbody = document.getElementById("tbody");
-      for (let i = 0; i < 1000; ++i) {
-        let frame = frameUseCount[i];
-        let funcName = gThread.stringArray[gThread.funcTable.name[frame.id]];
-        let libName = gThread.libs[gThread.funcTable.lib[frame.id]].name;
-        let duration = formatTime(frame.duration).toLocaleString();
-
-        let tr = document.createElement("tr");
-
-        let td = document.createElement("td");
-        td.textContent = i;
-        tr.appendChild(td);
-
-        td = document.createElement("td");
-        td.textContent = duration;
-        tr.appendChild(td);
-
-        td = document.createElement("td");
-        td.textContent = frame.count.toLocaleString();
-        tr.appendChild(td);
-
-        td = document.createElement("td");
-        td.textContent = `${funcName} ${libName}`;
-        tr.appendChild(td);
-
-        tbody.appendChild(tr);
-      }
-      document.getElementById("stackTitle").innerHTML = "Main thread hang frames from build " + gdate;
-      document.getElementById("stack").remove();
-      setProgressMessageVisibility(false);
-      return;
+    frameUseCount = new Array(gThread.funcTable.length);
+    for (var i = 0; i < gThread.funcTable.length; ++i) {
+      frameUseCount[i] = {id: i, duration: 0, count: 0};
     }
+
+    for (let hang of hangsArray) {
+      if (Date.now() - startTime > 40) {
+        await promiseAnimationFrame();
+        startTime = Date.now();
+      }
+
+      let frameSet = new Set();
+      for (let frameId of hang.frameIds) {
+        // Avoid counting multiple times frames that appear multiple times
+        // in the stack.
+        if (frameSet.has(frameId))
+          continue;
+        frameSet.add(frameId);
+
+        let frame = frameUseCount[frameId];
+        frame.duration += hang.duration;
+        frame.count += hang.count;
+      }
+    }
+
+    frameUseCount.sort((a, b) => b.duration - a.duration);
+
+    let tbody = document.getElementById("tbody");
+    for (let i = 0; i < 1000; ++i) {
+      let frame = frameUseCount[i];
+      let funcName = gThread.stringArray[gThread.funcTable.name[frame.id]];
+      let libName = gThread.libs[gThread.funcTable.lib[frame.id]].name;
+      let duration = formatTime(frame.duration).toLocaleString();
+
+      let tr = document.createElement("tr");
+
+      let td = document.createElement("td");
+      td.textContent = i;
+      tr.appendChild(td);
+
+      td = document.createElement("td");
+      td.textContent = duration;
+      tr.appendChild(td);
+
+      td = document.createElement("td");
+      td.textContent = frame.count.toLocaleString();
+      tr.appendChild(td);
+
+      td = document.createElement("td");
+      td.textContent = `${funcName} ${libName}`;
+      tr.appendChild(td);
+
+      tbody.appendChild(tr);
+    }
+    document.getElementById("stackTitle").innerHTML = "Main thread hang frames from build " + gdate;
+    document.getElementById("stack").remove();
+    setProgressMessageVisibility(false);
+    return;
   }
 
   let message = showProgressMessage("Merging...");
@@ -561,45 +554,42 @@ window.onload = async function() {
   gHangs = [];
   let hangsMap = new Map();
   let startTime = Date.now();
-  for (let {hangs: hangsArray, thread} of allHangs) {
-    gThread = thread;
-    for (let hang of hangsArray) {
-      if (Date.now() - startTime > 40) {
-        await promiseAnimationFrame();
-        startTime = Date.now();
-      }
+  for (let hang of hangsArray) {
+    if (Date.now() - startTime > 40) {
+      await promiseAnimationFrame();
+      startTime = Date.now();
+    }
 
-      // De-duplicate hangs that have identical processed stacks.
-      let stack = hang.frameIds.toString();
-      if (hangsMap.has(stack)) {
-        let existingHang = hangsMap.get(stack);
-        existingHang.duration += hang.duration;
-        existingHang.count += hang.count;
+    // De-duplicate hangs that have identical processed stacks.
+    let stack = hang.frameIds.toString();
+    if (hangsMap.has(stack)) {
+      let existingHang = hangsMap.get(stack);
+      existingHang.duration += hang.duration;
+      existingHang.count += hang.count;
+      continue;
+    }
+
+    // De-duplicate hangs for the same known bug.
+    let signature;
+    for (let frame of hang.frames) {
+      signature = frame.funcName.match(gBugSignatureExp);
+      if (signature)
+        break;
+    }
+    if (signature) {
+      let bug = bugs.get(signature[0]);
+      if (bug.hang) {
+        bug.hang.duration += hang.duration;
+        bug.hang.count += hang.count;
         continue;
       }
-
-      // De-duplicate hangs for the same known bug.
-      let signature;
-      for (let frame of hang.frames) {
-        signature = frame.funcName.match(gBugSignatureExp);
-        if (signature)
-          break;
-      }
-      if (signature) {
-        let bug = bugs.get(signature[0]);
-        if (bug.hang) {
-          bug.hang.duration += hang.duration;
-          bug.hang.count += hang.count;
-          continue;
-        }
-        hang.knownBug = bug;
-        bug.hang = hang;
-      }
-      // This hang is not in our merged list yet, add it.
-      hang.frames = undefined;
-      gHangs.push(hang);
-      hangsMap.set(stack, hang);
+      hang.knownBug = bug;
+      bug.hang = hang;
     }
+    // This hang is not in our merged list yet, add it.
+    hang.frames = undefined;
+    gHangs.push(hang);
+    hangsMap.set(stack, hang);
   }
 
   await updateProgressMessage(message, "Sorting...");
