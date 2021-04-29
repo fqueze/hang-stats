@@ -40,7 +40,20 @@ function setDate(date) {
     return;
   gdate = date;
   document.getElementById("buildid").textContent = `from build ${date}`;
+
+  setURLSearchParam("date", date);
+  document.getElementById("showLinks").hidden = false;
   updateTitle();
+}
+
+function previous() {
+  setURLSearchParam("date", findPreviousDate(gdate));
+  window.location.reload();
+}
+
+function mostRecent() {
+  setURLSearchParam("date", "");
+  window.location.reload();
 }
 
 function updateTitle() {
@@ -164,7 +177,7 @@ function findPreviousDate(date) {
     ensureTwoDigits(date.getMonth() + 1) + ensureTwoDigits(date.getDate());
 }
 
-async function fetchHangFile(date = "current") {
+async function fetchHangFile(date) {
   let file = `hangs_main_${date}.json`;
 
   let message = showProgressMessage(`Fetching ${file}...`);
@@ -180,8 +193,8 @@ async function fetchHangFile(date = "current") {
   return data;
 }
 
-async function fetchHangs(bugsPromise) {
-  let data = await fetchHangFile();
+async function fetchHangs(requestedDate, bugsPromise) {
+  let data = await fetchHangFile(requestedDate);
   let retries = 5;
   while (retries-- && !data.threads.length) {
     // Broken file, look for the previous file.
@@ -482,7 +495,8 @@ window.onload = async function() {
     filterInput.value = filterString;
 
   let bugsPromise = fetchBugs();
-  let hangsArray = await fetchHangs(bugsPromise);
+  let hangsArray = await fetchHangs(searchParams.get("date") || "current",
+                                    bugsPromise);
   let bugs = await bugsPromise;
 
   if (searchParams.has("showFrames")) {
