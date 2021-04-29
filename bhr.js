@@ -156,21 +156,56 @@ async function fetchBugs() {
   return bugsMap;
 };
 
-async function fetchHangs(size) {
-  let file = `hang_profile_${size}.json`;
-  file = "TEST_hang_profile_128_65536__incremental_20191117.json";
-  file = "hangs_main_current.json";
-//  file = "hangs_main_20200927.json";
+function isDateValid(date) {
+  return /^20[0-9][0-9][0-1][0-9][0-3][0-9]$/.test(date);
+}
+
+function findPreviousDate(date) {
+  let ensureTwoDigits = d => (d < 10 ? "0" : "") + d;
+
+  date = new Date(Date.parse(date.replace(/(....)(..)(..)/,"$1-$2-$3")));
+  date.setDate(date.getDate() - 1);
+  return date.getFullYear() +
+    ensureTwoDigits(date.getMonth() + 1) + ensureTwoDigits(date.getDate());
+}
+
+async function fetchHangFile(date = "current") {
+  let file = `hangs_main_${date}.json`;
 
   let message = showProgressMessage(`Fetching ${file}...`);
+
   let url = `https://analysis-output.telemetry.mozilla.org/bhr/data/hang_aggregates/${file}`;
   if (window.location.protocol == "file:")
     url = "./" + file;
+
   let response = await fetch(url);
   await updateProgressMessage(message, `Parsing ${file}...`);
   let data = await response.json();
-  await updateProgressMessage(message, `Processing ${file}...`);
+  message.remove();
+  return data;
+}
 
+async function fetchHangs(size) {
+  let data = await fetchHangFile();
+  let retries = 5;
+  while (retries-- && !data.threads.length) {
+    // Broken file, look for the previous file.
+    let date = Object.keys(data.usageHoursByDate)[0];
+    if (isDateValid(date)) {
+      let previous = findPreviousDate(date);
+      let m = showProgressMessage(`Empty data file, falling back to ${previous}`);
+      data = await fetchHangFile(previous);
+      m.remove();
+    } else {
+      break;
+    }
+  }
+  if (!data.threads.length) {
+    showProgressMessage(`Empty data file`);
+    throw "invalid file";
+  }
+
+  let message = showProgressMessage(`Processing data...`);
   let thread;
   for (thread of data.threads)
     if (thread.name == "Gecko" && thread.processType == "default")
