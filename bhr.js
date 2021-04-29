@@ -180,7 +180,7 @@ async function fetchHangFile(date = "current") {
   return data;
 }
 
-async function fetchHangs() {
+async function fetchHangs(bugsPromise) {
   let data = await fetchHangFile();
   let retries = 5;
   while (retries-- && !data.threads.length) {
@@ -214,6 +214,8 @@ async function fetchHangs() {
   let searchParams = getURLSearchParams();
   let onlyXulLeaf = searchParams.has("onlyXulLeaf");
   let skipKnownBugs = searchParams.has("skipKnownBugs");
+  if (skipKnownBugs)
+    await bugsPromise;
 
   let hangs = [];
   let hangCount = day.sampleHangMs.length;
@@ -480,9 +482,8 @@ window.onload = async function() {
     filterInput.value = filterString;
 
   let bugsPromise = fetchBugs();
+  let hangsArray = await fetchHangs(bugsPromise);
   let bugs = await bugsPromise;
-
-  let hangsArray = await fetchHangs();
 
   if (searchParams.has("showFrames")) {
     let frameUseCount;
