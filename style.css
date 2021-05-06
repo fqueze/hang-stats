@@ -110,6 +110,14 @@ ul {
   padding: 0;
 }
 
+code {
+  font-size: 13px;
+  padding: 2px 4px;
+  background-color: #f0f0f0;
+  border-radius: 3px;
+  margin-left: 2px;
+  margin-right: 2px;
+}
 
 li {
   line-height: 2em;
@@ -129,21 +137,20 @@ li.hidden-frame {
   background-color: var(--in-content-item-hover);
 }
 
-#bugzilla-annotation {
-  border-bottom: 1px solid var(--in-content-border-color);
-  padding-bottom: 3px;
+.extra-hang-info {
+  padding-bottom: 6px;
 }
 
-#bugzilla-annotation > ul {
+.extra-hang-info > ul {
   display: inline-block;
 }
 
-#bugzilla-annotation > ul > li {
+.extra-hang-info > ul > li {
   line-height: unset;
   padding: 0 .5rem;
 }
 
-#bugzilla-annotation > ul > li:hover {
+.extra-hang-info > ul > li:hover {
   background-color: unset;
 }
 
@@ -152,6 +159,16 @@ li.hidden-frame {
   background: url(https://bugzilla.mozilla.org/extensions/BMO/web/images/favicon.ico) no-repeat 10px center;
   padding-left: 36px;
   vertical-align: top;
+}
+
+#hang-annotation-label {
+  font-weight: bold;
+  vertical-align: top;
+  padding-left: 36px;
+}
+
+#hang-stack {
+  border-top: 1px solid var(--in-content-border-color);
 }
 
 #stackTitle:not(:hover) > #showLinks {

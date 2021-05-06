@@ -97,6 +97,35 @@ function isMozLib(libName) {
           "mozglue", "libmozglue.so"].includes(libName);
 }
 
+function getHangAnnotations(thread, id) {
+  if (!thread.sampleTable.annotations) {
+    return {};
+  }
+  let annotations = {};
+  let annotation = thread.sampleTable.annotations[id];
+  let duplicateAnnotations = {};
+
+  while (annotation !== null) {
+    let nameIndex = thread.annotationsTable.name[annotation];
+    let valueIndex = thread.annotationsTable.value[annotation];
+    let name = thread.stringArray[nameIndex];
+    let value = thread.stringArray[valueIndex];
+
+    if (name) {
+      if (annotations[name]) {
+        duplicateAnnotations[name] = true;
+      }
+      annotations[name] = value;
+    }
+    annotation = thread.annotationsTable.prefix[annotation];
+  }
+  duplicateAnnotations = Object.keys(duplicateAnnotations);
+  if (duplicateAnnotations.length) {
+    console.warn("Found some annotations multiple times: " + duplicateAnnotations.join(", "));
+  }
+  return annotations;
+}
+
 function getHangFrames(thread, id) {
     let frames = [];
     let stack = thread.sampleTable.stack[id];
@@ -173,6 +202,11 @@ async function fetchBugs() {
   return bugsMap;
 };
 
+function getAnnotationsKey(thread, id) {
+  return thread.sampleTable.annotations ?
+    thread.sampleTable.annotations[id] : -1;
+}
+
 function isDateValid(date) {
   return /^20[0-9][0-9][0-1][0-9][0-3][0-9]$/.test(date);
 }
@@ -242,6 +276,8 @@ async function fetchHangs(requestedDate, bugsPromise) {
   let hangs = [];
   let hangCount = day.sampleHangMs.length;
   let startTime = Date.now();
+  let annotationsMap = new Map();
+
   for (let id = 0; id < hangCount; ++id) {
     if (Date.now() - startTime > 40) {
       await promiseUnblockMainThread();
@@ -260,11 +296,19 @@ async function fetchHangs(requestedDate, bugsPromise) {
       continue;
     }
 
+    let annotationsKey = getAnnotationsKey(thread, id);
+    let annotations = annotationsMap.get(annotationsKey);
+    if (!annotations) {
+      annotations = getHangAnnotations(thread, id);
+      annotationsMap.set(annotationsKey, annotations);
+    }
+
     hangs.push({duration: Math.round(day.sampleHangMs[id] * usageHours),
                 count: Math.round(day.sampleHangCount[id] * usageHours),
                 id,
                 frames,
-                frameIds: frames.map(f => f.frameId)});
+                frameIds: frames.map(f => f.frameId),
+                annotations});
   }
 
   message.remove();
@@ -468,16 +512,54 @@ function setSelectedRow(row) {
         '<span class="highlight">' + escape(string.slice(index, index + filterString.length)) + "</span>" +
         escape(string.slice(index + filterString.length));
     }
-    let annotation = "";
+    let bugzillaAnnotationHtml = "";
     if (row.hang.knownBug) {
-      annotation =
-        `<div id="bugzilla-annotation">
+      bugzillaAnnotationHtml =
+        `<div id="bugzilla-annotation" class="extra-hang-info">
            <span id="annotation-label">Bugzilla annotation:</span><ul>${
              row.hang.knownBug.signatures.map(a => "<li>" + escape(a) + "</li>").join("")
            }</ul>
          </div>`;
     }
-    div.innerHTML = `${annotation}<ul>${
+    let hangAnnotationHtml = "";
+    let hangAnnotations = [...Object.entries(row.hang.annotationStats)];
+    if (hangAnnotations.length) {
+      hangAnnotations.sort((a, b) => b[1]._totalCount - a[1]._totalCount);
+      let annotationStrings = hangAnnotations.map(([key, value]) => {
+        let values = [...Object.entries(value)].filter(([k, v]) => !k.startsWith("_"));
+        if (values.length == 1 && values[0][0] == "true") {
+          let annotationCount = values[0][1];
+          let annotationPercent = (annotationCount / row.hang.count).toLocaleString(
+            undefined,
+            { style: 'percent', minimumFractionDigits: 1 }
+          );
+          return `<li><code>${escape(key)}</code>: ${annotationPercent} (${annotationCount} hangs)</li>`;
+        } else if (values.length == 1) {
+          let valueKey = values[0][0];
+          let annotationCount = values[0][1];
+          let annotationPercent = (annotationCount / row.hang.count).toLocaleString(
+            undefined,
+            { style: 'percent', minimumFractionDigits: 1 }
+          );
+          return `<li><code>${escape(key)}</code>: ${annotationPercent} (${annotationCount} hangs: <code>${escape(valueKey)}</code>)</li>`;
+        } else {
+          let annotationPercent = (value._totalCount / row.hang.count).toLocaleString(
+            undefined,
+            { style: 'percent', minimumFractionDigits: 1 }
+          );
+          let breakdown = values.map(([k,v]) => `${v} <code>${escape(k)}</code>`).join(", ");
+          return `<li><code>${escape(key)}</code>: ${annotationPercent} (${value._totalCount} hangs: ${breakdown})</li>`;
+        }
+      });
+      hangAnnotationHtml =
+        `<div id="hang-annotations" class="extra-hang-info">
+           <span id="hang-annotation-label">Hang annotations:</span><ul>${
+             annotationStrings.join("")
+           }</ul>
+         </div>`;
+    }
+
+    div.innerHTML = `${bugzillaAnnotationHtml}${hangAnnotationHtml}<ul id="hang-stack">${
       row.frames.map(f =>
         (f.hidden ? `<li class="hidden-frame" title="${f.hidden}">`
                   : "<li>") +
@@ -493,6 +575,23 @@ function setSelectedRow(row) {
     gSelectedRow = null;
     div.innerHTML = "";
     setURLSearchParam("row", "");
+  }
+}
+
+function updateAnnotationStats(stats, {annotations, count}) {
+  for (const [key, value] of Object.entries(annotations)) {
+    if (!(key in stats)) {
+      stats[key] = {};
+    }
+    if (!(value in stats[key])) {
+      stats[key][value] = count;
+    } else {
+      stats[key][value] += count;
+    }
+    if (!stats[key]._totalCount) {
+      stats[key]._totalCount = 0;
+    }
+    stats[key]._totalCount += count;
   }
 }
 
@@ -590,6 +689,7 @@ window.onload = async function() {
       let existingHang = hangsMap.get(stack);
       existingHang.duration += hang.duration;
       existingHang.count += hang.count;
+      updateAnnotationStats(existingHang.annotationStats, hang);
       continue;
     }
 
@@ -605,6 +705,7 @@ window.onload = async function() {
       if (bug.hang) {
         bug.hang.duration += hang.duration;
         bug.hang.count += hang.count;
+        updateAnnotationStats(bug.hang.annotationStats, hang);
         continue;
       }
       hang.knownBug = bug;
@@ -612,6 +713,8 @@ window.onload = async function() {
     }
     // This hang is not in our merged list yet, add it.
     hang.frames = undefined;
+    hang.annotationStats = {};
+    updateAnnotationStats(hang.annotationStats, hang);
     gHangs.push(hang);
     hangsMap.set(stack, hang);
   }
