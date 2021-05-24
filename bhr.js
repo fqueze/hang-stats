@@ -43,7 +43,7 @@ function setURLSearchParam(param, value) {
   document.location.hash = URLHash.toString();
 }
 
-var gdate, gFilterString;
+var gdate, gFilterString, gAnnotationFilters;
 function setDate(date) {
   if (gdate)
     return;
@@ -71,6 +71,8 @@ function updateTitle() {
     title.push(gdate);
   if (gFilterString)
     title.push(gFilterString);
+  if (gAnnotationFilters)
+    title.push(gAnnotationFilters.map(f => f.join(": ")).join(", "));
   document.title = title.join(" - ");
 }
 
@@ -97,7 +99,7 @@ function isMozLib(libName) {
           "mozglue", "libmozglue.so"].includes(libName);
 }
 
-function getHangAnnotations(thread, id) {
+function getHangAnnotationInfo(thread, id) {
   if (!thread.sampleTable.annotations) {
     return {};
   }
@@ -123,7 +125,11 @@ function getHangAnnotations(thread, id) {
   if (duplicateAnnotations.length) {
     console.warn("Found some annotations multiple times: " + duplicateAnnotations.join(", "));
   }
-  return annotations;
+  let passFilter = !gAnnotationFilters || gAnnotationFilters.every(([key, value]) => {
+    return (key in annotations) && annotations[key] == value;
+  });
+
+  return {annotations, passFilter};
 }
 
 function getHangFrames(thread, id) {
@@ -277,6 +283,7 @@ async function fetchHangs(requestedDate, bugsPromise) {
   let hangCount = day.sampleHangMs.length;
   let startTime = Date.now();
   let annotationsMap = new Map();
+  let annotationFilterMap = new Map();
 
   for (let id = 0; id < hangCount; ++id) {
     if (Date.now() - startTime > 40) {
@@ -297,18 +304,20 @@ async function fetchHangs(requestedDate, bugsPromise) {
     }
 
     let annotationsKey = getAnnotationsKey(thread, id);
-    let annotations = annotationsMap.get(annotationsKey);
-    if (!annotations) {
-      annotations = getHangAnnotations(thread, id);
-      annotationsMap.set(annotationsKey, annotations);
+    let annotationInfo = annotationsMap.get(annotationsKey);
+    if (!annotationInfo) {
+      annotationInfo = getHangAnnotationInfo(thread, id);
+      annotationsMap.set(annotationsKey, annotationInfo);
     }
 
-    hangs.push({duration: Math.round(day.sampleHangMs[id] * usageHours),
-                count: Math.round(day.sampleHangCount[id] * usageHours),
-                id,
-                frames,
-                frameIds: frames.map(f => f.frameId),
-                annotations});
+    if (annotationInfo.passFilter) {
+      hangs.push({duration: Math.round(day.sampleHangMs[id] * usageHours),
+                  count: Math.round(day.sampleHangCount[id] * usageHours),
+                  id,
+                  frames,
+                  frameIds: frames.map(f => f.frameId),
+                  annotations: annotationInfo.annotations});
+    }
   }
 
   message.remove();
@@ -601,6 +610,14 @@ window.onload = async function() {
   let filterInput = document.getElementById("filter");
   if (gFilterString)
     filterInput.value = gFilterString;
+  let annotationFiltersString = searchParams.get("annotations");
+  if (annotationFiltersString) {
+    gAnnotationFilters = annotationFiltersString.split(",").map(s => s.split(":"));
+    if (gAnnotationFilters.some(f => f.length != 2)) {
+      console.warn('Annotation filters must all be of the form "key:value"');
+      gAnnotationFilters = null;
+    }
+  }
 
   let bugsPromise = fetchBugs();
   let hangsArray = await fetchHangs(searchParams.get("date") || "current",
