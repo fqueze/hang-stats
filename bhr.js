@@ -43,7 +43,7 @@ function setURLSearchParam(param, value) {
   document.location.hash = URLHash.toString();
 }
 
-var gdate, gFilterString, gAnnotationFilters;
+var gdate, gFilterString, gAnnotationFilters, gNegAnnotationFilters;
 function setDate(date) {
   if (gdate)
     return;
@@ -73,6 +73,8 @@ function updateTitle() {
     title.push(gFilterString);
   if (gAnnotationFilters)
     title.push(gAnnotationFilters.map(f => f.join(": ")).join(", "));
+  if (gNegAnnotationFilters)
+    title.push(gNegAnnotationFilters.map(f => f.join(" NOT ")).join(", "));
   document.title = title.join(" - ");
 }
 
@@ -125,11 +127,14 @@ function getHangAnnotationInfo(thread, id) {
   if (duplicateAnnotations.length) {
     console.warn("Found some annotations multiple times: " + duplicateAnnotations.join(", "));
   }
-  let passFilter = !gAnnotationFilters || gAnnotationFilters.every(([key, value]) => {
+  let passPositiveFilter = !gAnnotationFilters || gAnnotationFilters.every(([key, value]) => {
+    return (key in annotations) && annotations[key] == value;
+  });
+  let passNegativeFilter = !gNegAnnotationFilters || !gNegAnnotationFilters.some(([key, value]) => {
     return (key in annotations) && annotations[key] == value;
   });
 
-  return {annotations, passFilter};
+  return {annotations, passFilter: passPositiveFilter && passNegativeFilter};
 }
 
 function getHangFrames(thread, id) {
@@ -612,10 +617,17 @@ window.onload = async function() {
     filterInput.value = gFilterString;
   let annotationFiltersString = searchParams.get("annotations");
   if (annotationFiltersString) {
-    gAnnotationFilters = annotationFiltersString.split(",").map(s => s.split(":"));
+    gAnnotationFilters = annotationFiltersString.split(",")
+      .filter(s => !s.startsWith("!")).map(s => s.split(":"));
     if (gAnnotationFilters.some(f => f.length != 2)) {
       console.warn('Annotation filters must all be of the form "key:value"');
       gAnnotationFilters = null;
+    }
+    gNegAnnotationFilters = annotationFiltersString.split(",")
+      .filter(s => s.startsWith("!")).map(s => s.slice(1).split(":"));
+    if (gNegAnnotationFilters.some(f => f.length != 2)) {
+      console.warn('Negative annotation filters must all be of the form "!key:value"');
+      gNegAnnotationFilters = null;
     }
   }
 
