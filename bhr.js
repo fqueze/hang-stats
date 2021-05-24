@@ -43,7 +43,7 @@ function setURLSearchParam(param, value) {
   document.location.hash = URLHash.toString();
 }
 
-var gdate, filterString;
+var gdate, gFilterString;
 function setDate(date) {
   if (gdate)
     return;
@@ -69,8 +69,8 @@ function updateTitle() {
   let title = ["BHR"];
   if (gdate)
     title.push(gdate);
-  if (filterString)
-    title.push(filterString);
+  if (gFilterString)
+    title.push(gFilterString);
   document.title = title.join(" - ");
 }
 
@@ -323,12 +323,12 @@ function formatTime(time) {
 
 var gFramesToFilter;
 
-async function displayHangs(hangs, filterString, message) {
+async function displayHangs(hangs, message) {
   let tbody = document.getElementById("tbody");
   while (tbody.firstChild)
     tbody.firstChild.remove();
 
-  if (filterString) {
+  if (gFilterString) {
     setProgressMessageVisibility(true);
     await updateProgressMessage(message, "Filtering...");
 
@@ -341,10 +341,10 @@ async function displayHangs(hangs, filterString, message) {
       }
     }
 
-    let filterFun = value => value.includes(filterString);
+    let filterFun = value => value.includes(gFilterString);
     // Make the filter case insensitive if the filter string is all lower case.
-    if (filterString.toLowerCase() == filterString) {
-      filterFun = value => value.toLowerCase().includes(filterString);
+    if (gFilterString.toLowerCase() == gFilterString) {
+      filterFun = value => value.toLowerCase().includes(gFilterString);
     }
 
     let filteredFrames = new Set();
@@ -360,7 +360,7 @@ async function displayHangs(hangs, filterString, message) {
     for (let hang of hangs) {
       if (Date.now() - startTime > 40) {
         await promiseUnblockMainThread();
-        if (document.getElementById("filter").value != filterString) {
+        if (document.getElementById("filter").value != gFilterString) {
           return;
         }
         startTime = Date.now();
@@ -496,21 +496,21 @@ function setSelectedRow(row) {
                        .replace(/</g, "&lt;")
                        .replace(/>/g, "&gt;");
     function highlight(string) {
-      if (!filterString)
+      if (!gFilterString)
         return escape(string);
 
       let index;
       // The filter is case insensitive if the filter string is all lower case.
-      if (filterString.toLowerCase() == filterString) {
-        index = string.toLowerCase().indexOf(filterString);
+      if (gFilterString.toLowerCase() == gFilterString) {
+        index = string.toLowerCase().indexOf(gFilterString);
       } else {
-        index = string.indexOf(filterString);
+        index = string.indexOf(gFilterString);
       }
       if (index == -1)
         return escape(string);
       return escape(string.slice(0, index)) +
-        '<span class="highlight">' + escape(string.slice(index, index + filterString.length)) + "</span>" +
-        escape(string.slice(index + filterString.length));
+        '<span class="highlight">' + escape(string.slice(index, index + gFilterString.length)) + "</span>" +
+        escape(string.slice(index + gFilterString.length));
     }
     let bugzillaAnnotationHtml = "";
     if (row.hang.knownBug) {
@@ -597,10 +597,10 @@ function updateAnnotationStats(stats, {annotations, count}) {
 
 window.onload = async function() {
   let searchParams = getURLSearchParams();
-  filterString = searchParams.get("filter");
+  gFilterString = searchParams.get("filter");
   let filterInput = document.getElementById("filter");
-  if (filterString)
-    filterInput.value = filterString;
+  if (gFilterString)
+    filterInput.value = gFilterString;
 
   let bugsPromise = fetchBugs();
   let hangsArray = await fetchHangs(searchParams.get("date") || "current",
@@ -726,15 +726,15 @@ window.onload = async function() {
     gTotalCount += hang.count;
   }
 
-  await displayHangs(gHangs, filterString, message);
+  await displayHangs(gHangs, message);
 
   setProgressMessageVisibility(false);
 
   filterInput.addEventListener("input", event => {
-    filterString = event.target.value;
-    setURLSearchParam("filter", filterString);
+    gFilterString = event.target.value;
+    setURLSearchParam("filter", gFilterString);
     updateTitle();
-    displayHangs(gHangs, filterString, message);
+    displayHangs(gHangs, message);
   });
 
   let tbody = document.getElementById("tbody");
