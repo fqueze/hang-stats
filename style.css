@@ -113,7 +113,7 @@ ul {
 code {
   font-size: 13px;
   padding: 2px 4px;
-  background-color: #f0f0f0;
+  background-color: var(--in-content-box-info-background);
   border-radius: 3px;
   margin-left: 2px;
   margin-right: 2px;
