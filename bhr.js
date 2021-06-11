@@ -348,8 +348,10 @@ function formatTime(time) {
 }
 
 var gFramesToFilter;
+var gDisplayHangsCallCount = 0;
 
 async function displayHangs(hangs, message) {
+  let callId = ++gDisplayHangsCallCount;
   let tbody = document.getElementById("tbody");
   while (tbody.firstChild)
     tbody.firstChild.remove();
@@ -357,6 +359,9 @@ async function displayHangs(hangs, message) {
   if (gFilterString) {
     setProgressMessageVisibility(true);
     await updateProgressMessage(message, "Filtering...");
+    if (gDisplayHangsCallCount != callId) {
+      return;
+    }
 
     if (!gFramesToFilter) {
       gFramesToFilter = new Set();
@@ -386,7 +391,7 @@ async function displayHangs(hangs, message) {
     for (let hang of hangs) {
       if (Date.now() - startTime > 40) {
         await promiseUnblockMainThread();
-        if (document.getElementById("filter").value != gFilterString) {
+        if (gDisplayHangsCallCount != callId) {
           return;
         }
         startTime = Date.now();
