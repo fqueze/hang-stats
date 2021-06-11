@@ -241,10 +241,18 @@ async function fetchHangFile(date) {
   let message = showProgressMessage(`Fetching ${file}...`);
 
   let url = `https://analysis-output.telemetry.mozilla.org/bhr/data/hang_aggregates/${file}`;
-  if (window.location.protocol == "file:")
-    url = "./" + file;
-
-  let response = await fetch(url);
+  let response;
+  if (window.location.protocol == "file:") {
+    // Support loading a local file when loading the dashboard from
+    // file:// to support offline development.
+    try {
+      response = await fetch("./" + file);
+    } catch(e) {
+      response = await fetch(url);
+    }
+  } else {
+    response = await fetch(url);
+  }
   await updateProgressMessage(message, `Parsing ${file}...`);
   let data = await response.json();
   message.remove();
