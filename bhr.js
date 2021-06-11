@@ -559,7 +559,7 @@ function setSelectedRow(row) {
             undefined,
             { style: 'percent', minimumFractionDigits: 1 }
           );
-          return `<li><code>${escape(key)}</code>: ${annotationPercent} (${annotationCount} hangs)</li>`;
+          return `<li><code>${escape(key)}</code>: ${annotationPercent} (${annotationCount.toLocaleString()} hangs)</li>`;
         } else if (values.length == 1) {
           let valueKey = values[0][0];
           let annotationCount = values[0][1];
@@ -567,14 +567,14 @@ function setSelectedRow(row) {
             undefined,
             { style: 'percent', minimumFractionDigits: 1 }
           );
-          return `<li><code>${escape(key)}</code>: ${annotationPercent} (${annotationCount} hangs: <code>${escape(valueKey)}</code>)</li>`;
+          return `<li><code>${escape(key)}</code>: ${annotationPercent} (${annotationCount.toLocaleString()} hangs: <code>${escape(valueKey)}</code>)</li>`;
         } else {
           let annotationPercent = (value._totalCount / row.hang.count).toLocaleString(
             undefined,
             { style: 'percent', minimumFractionDigits: 1 }
           );
-          let breakdown = values.map(([k,v]) => `${v} <code>${escape(k)}</code>`).join(", ");
-          return `<li><code>${escape(key)}</code>: ${annotationPercent} (${value._totalCount} hangs: ${breakdown})</li>`;
+          let breakdown = values.map(([k,v]) => `${v.toLocaleString()} <code>${escape(k)}</code>`).join(", ");
+          return `<li><code>${escape(key)}</code>: ${annotationPercent} (${value._totalCount.toLocaleString()} hangs: ${breakdown})</li>`;
         }
       });
       hangAnnotationHtml =
