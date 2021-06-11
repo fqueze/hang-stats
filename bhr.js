@@ -71,10 +71,14 @@ function updateTitle() {
     title.push(gdate);
   if (gFilterString)
     title.push(gFilterString);
+  let annotationFilters = [];
   if (gAnnotationFilters)
-    title.push(gAnnotationFilters.map(f => f.join(": ")).join(", "));
+    annotationFilters.push(...gAnnotationFilters.map(f => f.join(": ")));
   if (gNegAnnotationFilters)
-    title.push(gNegAnnotationFilters.map(f => f.join(" NOT ")).join(", "));
+    annotationFilters.push(...gNegAnnotationFilters.map(f => f.join(" NOT ")));
+  if (annotationFilters.length) {
+    title.push(annotationFilters.join(", "));
+  }
   document.title = title.join(" - ");
 }
 
@@ -128,10 +132,10 @@ function getHangAnnotationInfo(thread, id) {
     console.warn("Found some annotations multiple times: " + duplicateAnnotations.join(", "));
   }
   let passPositiveFilter = !gAnnotationFilters || gAnnotationFilters.every(([key, value]) => {
-    return (key in annotations) && annotations[key] == value;
+    return (key in annotations) && (value == "*" || annotations[key] == value);
   });
   let passNegativeFilter = !gNegAnnotationFilters || !gNegAnnotationFilters.some(([key, value]) => {
-    return (key in annotations) && annotations[key] == value;
+    return (key in annotations) && (value == "*" || annotations[key] == value);
   });
 
   return {annotations, passFilter: passPositiveFilter && passNegativeFilter};
