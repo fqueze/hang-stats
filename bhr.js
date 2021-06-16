@@ -107,7 +107,7 @@ function isMozLib(libName) {
 
 function getHangAnnotationInfo(thread, id) {
   if (!thread.sampleTable.annotations) {
-    return {};
+    return {annotations: {}, passFilter: true};
   }
   let annotations = {};
   let annotation = thread.sampleTable.annotations[id];
