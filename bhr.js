@@ -43,7 +43,7 @@ function setURLSearchParam(param, value) {
   document.location.hash = URLHash.toString();
 }
 
-var gdate, gFilterString, gAnnotationFilters, gNegAnnotationFilters;
+var gdate, gFilterString, gAnnotationFilters, gNegAnnotationFilters, gShowTasks;
 function setDate(date) {
   if (gdate)
     return;
@@ -190,6 +190,14 @@ function getHangFrames(thread, id) {
       }
       
       frames.push({frameId, funcName, libName, hidden: ""});
+
+      if (gShowTasks && funcName.startsWith("Task ")) {
+        if (frames.length > 1)
+          for (let i = 0; i < frames.length - 1; ++i)
+            frames[i].hidden = "Non-task";
+        return frames;
+      }
+
       stack = thread.stackTable.prefix[stack];
     }
   return frames;
@@ -293,6 +301,7 @@ async function fetchHangs(requestedDate, bugsPromise) {
   let searchParams = getURLSearchParams();
   let onlyXulLeaf = searchParams.has("onlyXulLeaf");
   let skipKnownBugs = searchParams.has("skipKnownBugs");
+  gShowTasks = searchParams.has("showTasks");
   if (skipKnownBugs)
     await bugsPromise;
 
