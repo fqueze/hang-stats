@@ -732,6 +732,18 @@ window.onload = async function() {
   gHangs = [];
   let hangsMap = new Map();
   let startTime = Date.now();
+
+  function updateExistingHang(existingHang, hang) {
+    existingHang.duration += hang.duration;
+    existingHang.count += hang.count;
+    if (existingHang.selfDuration < hang.duration) {
+      existingHang.frameIds = hang.frameIds;
+      existingHang.id = hang.id;
+      existingHang.selfDuration = hang.duration;
+    }
+    updateAnnotationStats(existingHang.annotationStats, hang);
+  }
+
   for (let hang of hangsArray) {
     if (Date.now() - startTime > 40) {
       await promiseUnblockMainThread();
@@ -741,10 +753,7 @@ window.onload = async function() {
     // De-duplicate hangs that have identical processed stacks.
     let stack = hang.frameIds.toString();
     if (hangsMap.has(stack)) {
-      let existingHang = hangsMap.get(stack);
-      existingHang.duration += hang.duration;
-      existingHang.count += hang.count;
-      updateAnnotationStats(existingHang.annotationStats, hang);
+      updateExistingHang(hangsMap.get(stack), hang);
       continue;
     }
 
@@ -758,9 +767,7 @@ window.onload = async function() {
     if (signature) {
       let bug = bugs.get(signature[0]);
       if (bug.hang) {
-        bug.hang.duration += hang.duration;
-        bug.hang.count += hang.count;
-        updateAnnotationStats(bug.hang.annotationStats, hang);
+        updateExistingHang(bug.hang, hang);
         continue;
       }
       hang.knownBug = bug;
@@ -770,6 +777,8 @@ window.onload = async function() {
     hang.frames = undefined;
     hang.annotationStats = {};
     updateAnnotationStats(hang.annotationStats, hang);
+    hang.annotations = undefined;
+    hang.selfDuration = hang.duration;
     gHangs.push(hang);
     hangsMap.set(stack, hang);
   }
