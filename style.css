@@ -156,7 +156,7 @@ li.hidden-frame {
 
 #annotation-label {
   font-weight: bold;
-  background: url(https://bugzilla.mozilla.org/extensions/BMO/web/images/favicon.ico) no-repeat 10px center;
+  background: url(https://bugzilla.mozilla.org/extensions/BMO/web/images/favicon.ico) no-repeat 10px/16px;
   padding-left: 36px;
   vertical-align: top;
 }
