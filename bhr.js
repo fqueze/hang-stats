@@ -2,6 +2,8 @@ var gHangs, gTotalTime = 0, gTotalCount = 0;
 var gThread;
 const kMaxRows = 50;
 
+const isChild = document.location.pathname.includes("/child/");
+
 function showProgressMessage(text) {
   let message = document.createElement("p");
   message.textContent = text
@@ -244,7 +246,7 @@ function findPreviousDate(date) {
 }
 
 async function fetchHangFile(date) {
-  let file = `hangs_main_${date}.json`;
+  let file = `hangs_${isChild ? "child" : "main"}_${date}.json`;
 
   let message = showProgressMessage(`Fetching ${file}...`);
 

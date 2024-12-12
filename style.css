@@ -148,6 +148,7 @@ li.hidden-frame {
 .extra-hang-info > ul > li {
   line-height: unset;
   padding: 0 .5rem;
+  text-wrap: nowrap;
 }
 
 .extra-hang-info > ul > li:hover {

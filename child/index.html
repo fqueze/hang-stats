@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>BHR - Child</title>
+    <link rel="stylesheet" href="../style.css">
+    <script src="../bhr.js"></script>
+  </head>
+  <body>
+    <table>
+      <thead>
+        <tr>
+          <td>#</td>
+          <td>total time (s)</td>
+          <td>count</td>
+          <td id="stackTitle">Child process hang stacks matching <input type"text" id="filter">
+            <span id="buildid"></span>
+            <span id="showLinks" hidden="true"> —
+              Show:<a href="javascript:previous()">previous day</a><a href="javascript:mostRecent()">most recent data</a>
+            </span>
+          </td>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div id="stack"></div>
+    <div id="progress"></div>
+  </body>
+</html>
