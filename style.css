@@ -170,6 +170,7 @@ li.hidden-frame {
 
 #hang-stack {
   border-top: 1px solid var(--in-content-border-color);
+  background-color: var(--in-content-box-background);
 }
 
 #stackTitle:not(:hover) > #showLinks {
