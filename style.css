@@ -3,7 +3,7 @@
 table {
   font-size: 1em;
   border-spacing: 0;
-  background-color: var(--in-content-box-background);
+  background-color: var(--background-color-box);
   margin: 0;
   position: absolute;
   top: 0;
@@ -57,11 +57,14 @@ td:first-child, td:nth-child(2), td:nth-child(3) {
 }
 thead > tr > td {
     border: none;
-    background-color: var(--in-content-box-background-hover);
+    background-color: var(--in-content-button-background);
     padding: 5px 10px;
 }
+thead > tr > td:hover {
+    background-color: var(--in-content-button-background-hover);
+}
 #footer {
-    background-color: var(--in-content-box-background-hover);
+    background-color: var(--in-content-button-background);
 }
 thead > tr > td:not(:first-child) {
     border-inline-start-width: 1px;
@@ -93,13 +96,19 @@ td:last-child {
     background-color: var(--in-content-item-hover);
 }
 
+#filter {
+  min-height: unset;
+  padding: unset;
+  margin: unset;
+}
+
 #stack {
   position: fixed;
   top: calc(2em + 3px);
   right: 0;
   width: 40%;
   height: calc(100% - 2em - 3px);
-  background: var(--in-content-box-background);
+  background: var(--background-color-box);
   border-left: 1px solid var(--in-content-border-color);
   overflow-y: scroll;
   overflow-x: hidden;
